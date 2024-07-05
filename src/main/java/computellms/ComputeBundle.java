@@ -328,6 +328,35 @@ public class ComputeBundle {
         launchAndSync(levelZeroKernel, dispatch);
     }
 
+    public void runRMSNorm2(LevelZeroKernel levelZeroKernel, int numElements, final float ss, LevelZeroBufferInteger... parameters) {
+
+        int[] groupSizeX = new int[] { numElements };
+        int[] groupSizeY = new int[] { 1 };
+        int[] groupSizeZ = new int[] { 1 };
+
+        ZeKernelHandle kernel = levelZeroKernel.getKernelHandle();
+
+        int result = levelZeroKernel.zeKernelSuggestGroupSize(kernel.getPtrZeKernelHandle(), numElements, 1, 1, groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSuggestGroupSize", result);
+
+        result = levelZeroKernel.zeKernelSetGroupSize(kernel.getPtrZeKernelHandle(), groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSetGroupSize", result);
+
+        for (int i = 0; i < parameters.length; i++) {
+            result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), i, Sizeof.POINTER.getNumBytes(), parameters[i]);
+        }
+        // TODO: Missing call for constant parameters for the Level Zero JNI Library
+        //result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), parameters.length, Sizeof.FLOAT.getNumBytes(), ss);
+        LevelZeroUtils.errorLog("zeKernelSetArgumentValue", result);
+
+        ZeGroupDispatch dispatch = new ZeGroupDispatch();
+        dispatch.setGroupCountX(numElements / groupSizeX[0]);
+        dispatch.setGroupCountY(1);
+        dispatch.setGroupCountZ(1);
+
+        launchAndSync(levelZeroKernel, dispatch);
+    }
+
     public void print(MemorySegment segment) {
         // Print Some Elements
         IntStream.range(0, 10).forEach(i -> {
@@ -346,7 +375,7 @@ public class ComputeBundle {
     public void init(MemorySegment segment, int size) {
         // Initialize Data
         for (int i = 0; i < size; i++) {
-            segment.setAtIndex(ValueLayout.JAVA_FLOAT, i,   i + 1);
+            segment.setAtIndex(ValueLayout.JAVA_FLOAT, i, (float) Math.random());
         }
     }
 

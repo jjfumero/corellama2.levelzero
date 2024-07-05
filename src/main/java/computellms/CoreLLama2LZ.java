@@ -66,7 +66,8 @@ public class CoreLLama2LZ {
         ComputeBundle computeBundle = new ComputeBundle();
         computeBundle.initializeLevelZeroPlatform("kernels.spv");
 
-        LevelZeroKernel kernel = computeBundle.createKernel("rmsnormReduction");
+        LevelZeroKernel kernel1 = computeBundle.createKernel("rmsnormReduction");
+        LevelZeroKernel kernel2 = computeBundle.createKernel("rmsnormNormalization");
 
         // Data Initialization
         int numElements = 4;
@@ -75,7 +76,7 @@ public class CoreLLama2LZ {
 
         computeBundle.init(dX.segment, numElements);
 
-        computeBundle.runRMSNorm1(kernel, numElements, 4, dOutput.buffer, dX.buffer);
+        computeBundle.runRMSNorm1(kernel1, numElements, 4, dOutput.buffer, dX.buffer);
 
         int numGroups = numElements / 4;
         var val = dOutput.segment.getAtIndex(ValueLayout.JAVA_FLOAT, 0);
@@ -86,6 +87,10 @@ public class CoreLLama2LZ {
         float ss = val + 1e-5f;
         ss = (float) (1.0 / Math.sqrt(ss));
         System.out.println("VALUE: " + ss);
+
+        ComputeBundle.MemBundle dWeight = computeBundle.allocateSharedWithSegment(numElements);
+        computeBundle.init(dWeight.segment, numElements);
+        computeBundle.runRMSNorm2(kernel2, numElements, ss, dOutput.buffer, dX.buffer, dWeight.buffer);
 
     }
 
