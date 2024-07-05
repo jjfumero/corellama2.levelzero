@@ -125,7 +125,7 @@ public class ComputeBundle {
         device = driver.getDevice(driverHandler, 0);
     }
 
-    private void printDevicProperties() {
+    private void printDeviceProperties() {
         // ============================================
         // Query driver properties
         // ============================================
@@ -217,15 +217,15 @@ public class ComputeBundle {
         LevelZeroUtils.errorLog("zeModuleBuildLogDestroy", result);
     }
 
-    public void initializeLevelZeroPlatform() {
+    public void initializeLevelZeroPlatform(String spirvFile) {
         initDriver();
         createContext();
         getDeviceWithContext();
         if (INFO) {
-            printDevicProperties();
+            printDeviceProperties();
         }
         createCommandQueue();
-        compileSPIRVKernel("/tmp/file.spv");
+        compileSPIRVKernel(spirvFile);
     }
 
     public LevelZeroKernel createKernel(String kernelName) {
@@ -243,13 +243,12 @@ public class ComputeBundle {
     }
 
     public MemBundle allocateSharedWithSegment(int numElements) {
-        final long bufferSize = (long) numElements * Sizeof.INT.getNumBytes();
+        final long bufferSize = (long) numElements * Sizeof.FLOAT.getNumBytes();
         LevelZeroBufferInteger buffer = new LevelZeroBufferInteger();
         ZeDeviceMemAllocDescriptor deviceMemAllocDesc = new ZeDeviceMemAllocDescriptor();
         deviceMemAllocDesc.setOrdinal(0);
         ZeHostMemAllocDescriptor hostMemAllocDesc = new ZeHostMemAllocDescriptor();
 
-        // Allocate Level Zero Shared Buffer
         int result = context.zeMemAllocShared(context.getContextHandle().getContextPtr()[0], deviceMemAllocDesc, hostMemAllocDesc, bufferSize, 8, device.getDeviceHandlerPtr(), buffer);
         LevelZeroUtils.errorLog("zeMemAllocShared", result);
 
@@ -259,7 +258,23 @@ public class ComputeBundle {
         return new MemBundle(segment, buffer);
     }
 
-    public void run(LevelZeroKernel levelZeroKernel, int numElements, LevelZeroBufferInteger bufferA, LevelZeroBufferInteger bufferB) {
+    private void launchAndSync(LevelZeroKernel levelZeroKernel, ZeGroupDispatch dispatch) {
+        ZeKernelHandle kernel = levelZeroKernel.getKernelHandle();
+        // Launch the kernel on the Intel Integrated GPU
+        int result = commandList.zeCommandListAppendLaunchKernel(commandList.getCommandListHandlerPtr(), kernel.getPtrZeKernelHandle(), dispatch, null, 0, null);
+        LevelZeroUtils.errorLog("zeCommandListAppendLaunchKernel", result);
+
+        result = commandList.zeCommandListClose(commandList.getCommandListHandlerPtr());
+        LevelZeroUtils.errorLog("zeCommandListClose", result);
+
+        result = commandQueue.zeCommandQueueExecuteCommandLists(commandQueue.getCommandQueueHandlerPtr(),  1, commandList.getCommandListHandler(), null);
+        LevelZeroUtils.errorLog("zeCommandQueueExecuteCommandLists", result);
+
+        result = commandQueue.zeCommandQueueSynchronize(commandQueue.getCommandQueueHandlerPtr(), Long.MAX_VALUE);
+        LevelZeroUtils.errorLog("zeCommandQueueSynchronize", result);
+    }
+
+    public void runKernelTesting(LevelZeroKernel levelZeroKernel, int numElements, LevelZeroBufferInteger bufferA, LevelZeroBufferInteger bufferB) {
 
         int[] groupSizeX = new int[] { numElements };
         int[] groupSizeY = new int[] { 1 };
@@ -277,41 +292,67 @@ public class ComputeBundle {
         result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 1, Sizeof.POINTER.getNumBytes(), bufferB);
         LevelZeroUtils.errorLog("zeKernelSetArgumentValue", result);
 
-        // Dispatch SPIR-V Kernel
         ZeGroupDispatch dispatch = new ZeGroupDispatch();
         dispatch.setGroupCountX(numElements / groupSizeX[0]);
         dispatch.setGroupCountY(1);
         dispatch.setGroupCountZ(1);
 
-        // Launch the kernel on the Intel Integrated GPU
-        result = commandList.zeCommandListAppendLaunchKernel(commandList.getCommandListHandlerPtr(), kernel.getPtrZeKernelHandle(), dispatch, null, 0, null);
-        LevelZeroUtils.errorLog("zeCommandListAppendLaunchKernel", result);
+        launchAndSync(levelZeroKernel, dispatch);
+    }
 
-        result = commandList.zeCommandListClose(commandList.getCommandListHandlerPtr());
-        LevelZeroUtils.errorLog("zeCommandListClose", result);
+    public void runRMSNorm1(LevelZeroKernel levelZeroKernel, int numElements, final int groupSize, LevelZeroBufferInteger dOutput, LevelZeroBufferInteger dX) {
 
-        result = commandQueue.zeCommandQueueExecuteCommandLists(commandQueue.getCommandQueueHandlerPtr(),  1, commandList.getCommandListHandler(), null);
-        LevelZeroUtils.errorLog("zeCommandQueueExecuteCommandLists", result);
+        int[] groupSizeX = new int[] { numElements };
+        int[] groupSizeY = new int[] { 1 };
+        int[] groupSizeZ = new int[] { 1 };
 
-        result = commandQueue.zeCommandQueueSynchronize(commandQueue.getCommandQueueHandlerPtr(), Long.MAX_VALUE);
-        LevelZeroUtils.errorLog("zeCommandQueueSynchronize", result);
+        ZeKernelHandle kernel = levelZeroKernel.getKernelHandle();
+
+        int result = levelZeroKernel.zeKernelSuggestGroupSize(kernel.getPtrZeKernelHandle(), numElements, 1, 1, groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSuggestGroupSize", result);
+
+        result = levelZeroKernel.zeKernelSetGroupSize(kernel.getPtrZeKernelHandle(), groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSetGroupSize", result);
+
+        result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 0, Sizeof.POINTER.getNumBytes(), dOutput);
+        result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 1, Sizeof.POINTER.getNumBytes(), dX);
+        int sharedMemorySize = groupSize * Sizeof.FLOAT.getNumBytes();
+        result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 2, sharedMemorySize, null);
+        LevelZeroUtils.errorLog("zeKernelSetArgumentValue", result);
+
+        ZeGroupDispatch dispatch = new ZeGroupDispatch();
+        dispatch.setGroupCountX(numElements / groupSizeX[0]);
+        dispatch.setGroupCountY(1);
+        dispatch.setGroupCountZ(1);
+
+        launchAndSync(levelZeroKernel, dispatch);
     }
 
     public void print(MemorySegment segment) {
         // Print Some Elements
-        IntStream.range(0, 10).map(i -> segment.getAtIndex(ValueLayout.JAVA_INT, i)).forEach(System.out::println);
+        IntStream.range(0, 10).forEach(i -> {
+            float atIndex = segment.getAtIndex(ValueLayout.JAVA_FLOAT, i);
+            System.out.println(atIndex);
+        });
     }
 
-    public void initialzeHostData(MemorySegment segment, int size) {
+    public void testingInitData(MemorySegment segment, int size) {
         // Initialize Data
         for (int i = 0; i < size; i++) {
-            segment.setAtIndex(ValueLayout.JAVA_INT, i, 100 + i);
+            segment.setAtIndex(ValueLayout.JAVA_FLOAT, i,  100 + i);
         }
     }
 
-    public boolean checkFinalResult(MemorySegment outputSegment, int size) {
+    public void init(MemorySegment segment, int size) {
+        // Initialize Data
         for (int i = 0; i < size; i++) {
-            var val = outputSegment.getAtIndex(ValueLayout.JAVA_INT, i);
+            segment.setAtIndex(ValueLayout.JAVA_FLOAT, i,   i + 1);
+        }
+    }
+
+    public boolean testingCheckResult(MemorySegment outputSegment, int size) {
+        for (int i = 0; i < size; i++) {
+            var val = outputSegment.getAtIndex(ValueLayout.JAVA_FLOAT, i);
             if (val != (100 + i)) {
                 return false;
             }

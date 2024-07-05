@@ -25,6 +25,8 @@ package computellms;
 
 import uk.ac.manchester.tornado.drivers.spirv.levelzero.LevelZeroKernel;
 
+import java.lang.foreign.ValueLayout;
+
 /**
  * Level Zero Implementation of the Compute Llama2.c kernels using the Level Zero JNI library.
  *
@@ -34,12 +36,11 @@ import uk.ac.manchester.tornado.drivers.spirv.levelzero.LevelZeroKernel;
  *
  */
 public class CoreLLama2LZ {
-    public static void main(String[] args) {
 
-        System.out.println("CoreLlama2.levelZero");
+    public void testingKernel() {
 
         ComputeBundle computeBundle = new ComputeBundle();
-        computeBundle.initializeLevelZeroPlatform();
+        computeBundle.initializeLevelZeroPlatform("file.spv");
 
         LevelZeroKernel kernel = computeBundle.createKernel("copyData");
 
@@ -48,19 +49,55 @@ public class CoreLLama2LZ {
         ComputeBundle.MemBundle input = computeBundle.allocateSharedWithSegment(numElements);
         ComputeBundle.MemBundle output = computeBundle.allocateSharedWithSegment(numElements);
 
-        computeBundle.initialzeHostData(input.segment, numElements);
+        computeBundle.testingInitData(input.segment, numElements);
 
-        computeBundle.run(kernel, numElements, input.buffer, output.buffer);
+        computeBundle.runKernelTesting(kernel, numElements, input.buffer, output.buffer);
 
-        // print output
-        System.out.println("Final result: ");
         computeBundle.print(output.segment);
-        boolean isCorrect = computeBundle.checkFinalResult(output.segment, numElements);
+        boolean isCorrect = computeBundle.testingCheckResult(output.segment, numElements);
         if (isCorrect) {
             System.out.println("Result is correct");
         } else {
             System.out.println("Result is wrong");
         }
+    }
 
+    public void runRMSNorm() {
+        ComputeBundle computeBundle = new ComputeBundle();
+        computeBundle.initializeLevelZeroPlatform("kernels.spv");
+
+        LevelZeroKernel kernel = computeBundle.createKernel("rmsnormReduction");
+
+        // Data Initialization
+        int numElements = 4;
+        ComputeBundle.MemBundle dOutput = computeBundle.allocateSharedWithSegment(numElements);
+        ComputeBundle.MemBundle dX = computeBundle.allocateSharedWithSegment(numElements);
+
+        computeBundle.init(dX.segment, numElements);
+
+        computeBundle.runRMSNorm1(kernel, numElements, 4, dOutput.buffer, dX.buffer);
+
+        int numGroups = numElements / 4;
+        var val = dOutput.segment.getAtIndex(ValueLayout.JAVA_FLOAT, 0);
+        for (int i = 1; i < numGroups; i++) {
+            val += dOutput.segment.getAtIndex(ValueLayout.JAVA_FLOAT, i);
+        }
+        System.out.println(val);
+        float ss = val + 1e-5f;
+        ss = (float) (1.0 / Math.sqrt(ss));
+        System.out.println("VALUE: " + ss);
+
+    }
+
+
+    public static void main(String[] args) {
+
+       CoreLLama2LZ coreLLama2LZ = new CoreLLama2LZ();
+
+       // Kernel just for testing
+       //coreLLama2LZ.testingKernel();
+
+       // rmsNorm
+       coreLLama2LZ.runRMSNorm();;
     }
 }
