@@ -62,6 +62,7 @@ import uk.ac.manchester.tornado.drivers.spirv.levelzero.utils.LevelZeroUtils;
 
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.util.Random;
 import java.util.stream.IntStream;
 
 public class ComputeBundle {
@@ -357,6 +358,122 @@ public class ComputeBundle {
         launchAndSync(levelZeroKernel, dispatch);
     }
 
+    public void runSoftMax1(LevelZeroKernel levelZeroKernel, int numElements, final int groupSize, LevelZeroBufferInteger dOutput, LevelZeroBufferInteger dX) {
+        int[] groupSizeX = new int[] { numElements };
+        int[] groupSizeY = new int[] { 1 };
+        int[] groupSizeZ = new int[] { 1 };
+
+        ZeKernelHandle kernel = levelZeroKernel.getKernelHandle();
+
+        int result = levelZeroKernel.zeKernelSuggestGroupSize(kernel.getPtrZeKernelHandle(), numElements, 1, 1, groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSuggestGroupSize", result);
+
+        result = levelZeroKernel.zeKernelSetGroupSize(kernel.getPtrZeKernelHandle(), groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSetGroupSize", result);
+
+        result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 0, Sizeof.POINTER.getNumBytes(), dOutput);
+        result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 1, Sizeof.POINTER.getNumBytes(), dX);
+        int sharedMemorySize = groupSize * Sizeof.FLOAT.getNumBytes();
+        result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 2, sharedMemorySize, null);
+        LevelZeroUtils.errorLog("zeKernelSetArgumentValue", result);
+
+        ZeGroupDispatch dispatch = new ZeGroupDispatch();
+        dispatch.setGroupCountX(numElements / groupSizeX[0]);
+        dispatch.setGroupCountY(1);
+        dispatch.setGroupCountZ(1);
+
+        launchAndSync(levelZeroKernel, dispatch);
+    }
+
+    public void runSoftMax2(LevelZeroKernel levelZeroKernel, int numElements, final int groupSize, LevelZeroBufferInteger dOutput, LevelZeroBufferInteger dX, float maxValue) {
+        int[] groupSizeX = new int[] { numElements };
+        int[] groupSizeY = new int[] { 1 };
+        int[] groupSizeZ = new int[] { 1 };
+
+        ZeKernelHandle kernel = levelZeroKernel.getKernelHandle();
+
+        int result = levelZeroKernel.zeKernelSuggestGroupSize(kernel.getPtrZeKernelHandle(), numElements, 1, 1, groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSuggestGroupSize", result);
+
+        result = levelZeroKernel.zeKernelSetGroupSize(kernel.getPtrZeKernelHandle(), groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSetGroupSize", result);
+
+        result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 0, Sizeof.POINTER.getNumBytes(), dOutput);
+        LevelZeroUtils.errorLog("zeKernelSetArgumentValue 0", result);
+        result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 1, Sizeof.POINTER.getNumBytes(), dX);
+        LevelZeroUtils.errorLog("zeKernelSetArgumentValue 1", result);
+        final int sharedMemorySize = groupSize * Sizeof.INT.getNumBytes();
+        result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 2, sharedMemorySize, null);
+        LevelZeroUtils.errorLog("zeKernelSetArgumentValue 2", result);
+        result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 3, Sizeof.FLOAT.getNumBytes(), Pointer.to(maxValue));
+        LevelZeroUtils.errorLog("zeKernelSetArgumentValue 3", result);
+
+        ZeGroupDispatch dispatch = new ZeGroupDispatch();
+        dispatch.setGroupCountX(numElements / groupSizeX[0]);
+        dispatch.setGroupCountY(1);
+        dispatch.setGroupCountZ(1);
+
+        launchAndSync(levelZeroKernel, dispatch);
+    }
+
+    public void runSoftMax3(LevelZeroKernel levelZeroKernel, int numElements, LevelZeroBufferInteger dX, float valSum) {
+        int[] groupSizeX = new int[] { numElements };
+        int[] groupSizeY = new int[] { 1 };
+        int[] groupSizeZ = new int[] { 1 };
+
+        ZeKernelHandle kernel = levelZeroKernel.getKernelHandle();
+
+        // Compute block of threads
+        int result = levelZeroKernel.zeKernelSuggestGroupSize(kernel.getPtrZeKernelHandle(), numElements, 1, 1, groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSuggestGroupSize", result);
+        result = levelZeroKernel.zeKernelSetGroupSize(kernel.getPtrZeKernelHandle(), groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSetGroupSize", result);
+
+        // Set Parameters
+        result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 0, Sizeof.POINTER.getNumBytes(), dX);
+        LevelZeroUtils.errorLog("zeKernelSetArgumentValue 0", result);
+        result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 1, Sizeof.FLOAT.getNumBytes(), Pointer.to(valSum));
+        LevelZeroUtils.errorLog("zeKernelSetArgumentValue 1", result);
+
+        // Dispatch
+        ZeGroupDispatch dispatch = new ZeGroupDispatch();
+        dispatch.setGroupCountX(numElements / groupSizeX[0]);
+        dispatch.setGroupCountY(1);
+        dispatch.setGroupCountZ(1);
+
+        launchAndSync(levelZeroKernel, dispatch);
+    }
+
+    public void runMatMul(LevelZeroKernel levelZeroKernel, int numElements, LevelZeroBufferInteger dXout, LevelZeroBufferInteger dX, LevelZeroBufferInteger dW, int numElements1) {
+        int[] groupSizeX = new int[] { numElements };
+        int[] groupSizeY = new int[] { 1 };
+        int[] groupSizeZ = new int[] { 1 };
+
+        ZeKernelHandle kernel = levelZeroKernel.getKernelHandle();
+
+        // Compute block of threads
+        int result = levelZeroKernel.zeKernelSuggestGroupSize(kernel.getPtrZeKernelHandle(), numElements, 1, 1, groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSuggestGroupSize", result);
+        result = levelZeroKernel.zeKernelSetGroupSize(kernel.getPtrZeKernelHandle(), groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSetGroupSize", result);
+
+        // Set Parameters
+        result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 0, Sizeof.POINTER.getNumBytes(), dXout);
+        result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 0, Sizeof.POINTER.getNumBytes(), dX);
+        result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 0, Sizeof.POINTER.getNumBytes(), dX);
+
+        LevelZeroUtils.errorLog("zeKernelSetArgumentValue 0", result);
+
+
+        // Dispatch
+        ZeGroupDispatch dispatch = new ZeGroupDispatch();
+        dispatch.setGroupCountX(numElements / groupSizeX[0]);
+        dispatch.setGroupCountY(1);
+        dispatch.setGroupCountZ(1);
+
+        launchAndSync(levelZeroKernel, dispatch);
+    }
+
     public void print(MemorySegment segment) {
         // Print Some Elements
         IntStream.range(0, 10).forEach(i -> {
@@ -372,10 +489,21 @@ public class ComputeBundle {
         }
     }
 
-    public void init(MemorySegment segment, int size) {
+    public void init1DRandom(MemorySegment segment, int size) {
         // Initialize Data
+        Random r = new Random(71);
         for (int i = 0; i < size; i++) {
-            segment.setAtIndex(ValueLayout.JAVA_FLOAT, i, (float) Math.random());
+            segment.setAtIndex(ValueLayout.JAVA_FLOAT, i, r.nextFloat());
+        }
+    }
+
+    public void init2DRandom(MemorySegment segment, int size) {
+        // Initialize Data
+        Random r = new Random(71);
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                segment.setAtIndex(ValueLayout.JAVA_FLOAT, i * size + j, r.nextFloat());
+            }
         }
     }
 
@@ -388,4 +516,5 @@ public class ComputeBundle {
         }
         return true;
     }
+
 }
