@@ -46,8 +46,8 @@ public class CoreLLama2LZ {
 
         // Data Initialization
         int numElements = 1024;
-        ComputeBundle.MemBundle input = computeBundle.allocateSharedWithSegment(numElements);
-        ComputeBundle.MemBundle output = computeBundle.allocateSharedWithSegment(numElements);
+        MemBundle input = computeBundle.allocateSharedWithSegment(numElements);
+        MemBundle output = computeBundle.allocateSharedWithSegment(numElements);
 
         computeBundle.testingInitData(input.segment, numElements);
 
@@ -62,19 +62,10 @@ public class CoreLLama2LZ {
         }
     }
 
-    public void runRMSNorm() {
-        ComputeBundle computeBundle = new ComputeBundle();
-        computeBundle.initializeLevelZeroPlatform("kernels.spv");
+    public void runRMSNorm(ComputeBundle computeBundle, MemBundle dOutput, MemBundle dX, MemBundle dWeight, final int numElements) {
 
         LevelZeroKernel kernel1 = computeBundle.createKernel("rmsnormReduction");
         LevelZeroKernel kernel2 = computeBundle.createKernel("rmsnormNormalization");
-
-        // Data Initialization
-        int numElements = 4;
-        ComputeBundle.MemBundle dOutput = computeBundle.allocateSharedWithSegment(numElements);
-        ComputeBundle.MemBundle dX = computeBundle.allocateSharedWithSegment(numElements);
-
-        computeBundle.init(dX.segment, numElements);
 
         computeBundle.runRMSNorm1(kernel1, numElements, 4, dOutput.buffer, dX.buffer);
 
@@ -88,21 +79,45 @@ public class CoreLLama2LZ {
         ss = (float) (1.0 / Math.sqrt(ss));
         System.out.println("VALUE: " + ss);
 
-        ComputeBundle.MemBundle dWeight = computeBundle.allocateSharedWithSegment(numElements);
-        computeBundle.init(dWeight.segment, numElements);
         computeBundle.runRMSNorm2(kernel2, numElements, ss, dOutput.buffer, dX.buffer, dWeight.buffer);
-
     }
 
+    private void runSoftMax(ComputeBundle computeBundle) {
+    }
+
+    private void runMatMul(ComputeBundle computeBundle) {
+
+    }
 
     public static void main(String[] args) {
 
-       CoreLLama2LZ coreLLama2LZ = new CoreLLama2LZ();
+        CoreLLama2LZ coreLLama2LZ = new CoreLLama2LZ();
 
-       // Kernel just for testing
-       //coreLLama2LZ.testingKernel();
+        // Kernel just for testing
+        //coreLLama2LZ.testingKernel();
 
-       // rmsNorm
-       coreLLama2LZ.runRMSNorm();;
+        ComputeBundle computeBundle = new ComputeBundle();
+        computeBundle.initializeLevelZeroPlatform("kernels.spv");
+
+        // Data Initialization
+        int numElements = 4;
+        MemBundle dOutput = computeBundle.allocateSharedWithSegment(numElements);
+        MemBundle dX = computeBundle.allocateSharedWithSegment(numElements);
+        computeBundle.init(dX.segment, numElements);
+        MemBundle dWeight = computeBundle.allocateSharedWithSegment(numElements);
+        computeBundle.init(dWeight.segment, numElements);
+
+        // rmsNorm
+        coreLLama2LZ.runRMSNorm(computeBundle, dOutput, dX, dWeight, numElements);
+
+        // softmax
+        coreLLama2LZ.runSoftMax(computeBundle);
+
+        // Matrix-Vector matMul
+        coreLLama2LZ.runMatMul(computeBundle);
     }
+
+
+
+
 }

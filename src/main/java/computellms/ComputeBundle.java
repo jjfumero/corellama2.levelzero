@@ -31,6 +31,7 @@ import uk.ac.manchester.tornado.drivers.spirv.levelzero.LevelZeroDevice;
 import uk.ac.manchester.tornado.drivers.spirv.levelzero.LevelZeroDriver;
 import uk.ac.manchester.tornado.drivers.spirv.levelzero.LevelZeroKernel;
 import uk.ac.manchester.tornado.drivers.spirv.levelzero.LevelZeroModule;
+import uk.ac.manchester.tornado.drivers.spirv.levelzero.Pointer;
 import uk.ac.manchester.tornado.drivers.spirv.levelzero.Sizeof;
 import uk.ac.manchester.tornado.drivers.spirv.levelzero.ZeAPIVersion;
 import uk.ac.manchester.tornado.drivers.spirv.levelzero.ZeBuildLogHandle;
@@ -345,8 +346,7 @@ public class ComputeBundle {
         for (int i = 0; i < parameters.length; i++) {
             result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), i, Sizeof.POINTER.getNumBytes(), parameters[i]);
         }
-        // TODO: Missing call for constant parameters for the Level Zero JNI Library
-        //result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), parameters.length, Sizeof.FLOAT.getNumBytes(), ss);
+        result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), parameters.length, Sizeof.FLOAT.getNumBytes(), Pointer.to(ss));
         LevelZeroUtils.errorLog("zeKernelSetArgumentValue", result);
 
         ZeGroupDispatch dispatch = new ZeGroupDispatch();
@@ -387,14 +387,5 @@ public class ComputeBundle {
             }
         }
         return true;
-    }
-
-    public static class MemBundle {
-        final MemorySegment segment;
-        final LevelZeroBufferInteger buffer;
-        public MemBundle(MemorySegment segment, LevelZeroBufferInteger buffer) {
-            this.segment = segment;
-            this.buffer = buffer;
-        }
     }
 }
