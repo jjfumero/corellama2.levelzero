@@ -36,3 +36,13 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+
+## SPIR-V Files
+file.bc
+file.spv
+kernels.bc
+kernels.spv
+
+## Env
+setvasrs.sh
