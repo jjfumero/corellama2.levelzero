@@ -4,6 +4,13 @@
 The resulting SPIR-V kernels are dispatched using the Intel Level Zero API for Intel GPUs. 
 Data is shared using Level Zero Shared Memory and Panama Segments. 
 
+## Dependencies
+
+- Intel Compute Runtime (GPU Driver): https://github.com/intel/compute-runtime 
+- Intel Level Zero Loader: https://github.com/oneapi-src/level-zero
+- Level Zero JNI: [https://github.com/jjfumero/levelzero-jni](https://github.com/beehive-lab/levelzero-jni)
+
+
 ## Build
 
 ### 1) Build Intel/LLVM (If needed)
@@ -49,7 +56,7 @@ a) Compile the native code:
 
 ```bash
 cd $LEVEL_ZERO_JNI
-git clone https://github.com/beehive-lab/levelzero-jni
+git clone https://github.com/beehive-lab/levelzero-jni.git
 export ZE_SHARED_LOADER="$LEVEL_ZERO_ROOT/build/lib/libze_loader.so"
 export CPLUS_INCLUDE_PATH=$LEVEL_ZERO_ROOT/include:$CPLUS_INCLUDE_PATH
 export C_INCLUDE_PATH=$LEVEL_ZERO_ROOT/include:$CPLUS_INCLUDE_PATH
