@@ -51,15 +51,15 @@ public class CoreLLama2LZ {
 
         // Data Initialization
         int numElements = 1024;
-        MemBundle input = computeBundle.allocateSharedWithSegment(numElements);
-        MemBundle output = computeBundle.allocateSharedWithSegment(numElements);
+        MemObject input = computeBundle.allocateSharedWithSegment(numElements);
+        MemObject output = computeBundle.allocateSharedWithSegment(numElements);
 
-        computeBundle.testingInitData(input.segment, numElements);
+        computeBundle.testingInitData(input.segment(), numElements);
 
-        computeBundle.runKernelTesting(kernel, numElements, input.buffer, output.buffer);
+        computeBundle.runKernelTesting(kernel, numElements, input.buffer(), output.buffer());
 
-        computeBundle.print(output.segment);
-        boolean isCorrect = computeBundle.testingCheckResult(output.segment, numElements);
+        computeBundle.print(output.segment());
+        boolean isCorrect = computeBundle.testingCheckResult(output.segment(), numElements);
         if (isCorrect) {
             System.out.println("Result is correct");
         } else {
@@ -67,57 +67,57 @@ public class CoreLLama2LZ {
         }
     }
 
-    public void runRMSNorm(ComputeBundle computeBundle, MemBundle dOutput, MemBundle dX, MemBundle dWeight, final int numElements) {
+    public void runRMSNorm(ComputeBundle computeBundle, MemObject dOutput, MemObject dX, MemObject dWeight, final int numElements) {
 
         LevelZeroKernel kernel1 = computeBundle.createKernel("rmsnormReduction");
         LevelZeroKernel kernel2 = computeBundle.createKernel("rmsnormNormalization");
 
-        computeBundle.runRMSNorm1(kernel1, numElements, GROUP_SIZE, dOutput.buffer, dX.buffer);
+        computeBundle.runRMSNorm1(kernel1, numElements, GROUP_SIZE, dOutput.buffer(), dX.buffer());
 
         int numGroups = numElements / GROUP_SIZE;
-        var val = dOutput.segment.getAtIndex(ValueLayout.JAVA_FLOAT, 0);
+        var val = dOutput.segment().getAtIndex(ValueLayout.JAVA_FLOAT, 0);
         for (int i = 1; i < numGroups; i++) {
-            val += dOutput.segment.getAtIndex(ValueLayout.JAVA_FLOAT, i);
+            val += dOutput.segment().getAtIndex(ValueLayout.JAVA_FLOAT, i);
         }
         System.out.println(val);
         float ss = val + 1e-5f;
         ss = (float) (1.0 / Math.sqrt(ss));
         System.out.println("VALUE: " + ss);
 
-        computeBundle.runRMSNorm2(kernel2, numElements, ss, dOutput.buffer, dX.buffer, dWeight.buffer);
+        computeBundle.runRMSNorm2(kernel2, numElements, ss, dOutput.buffer(), dX.buffer(), dWeight.buffer());
     }
 
-    private void runSoftMax(ComputeBundle computeBundle, MemBundle dOutput, MemBundle dX, final int numElements) {
+    private void runSoftMax(ComputeBundle computeBundle, MemObject dOutput, MemObject dX, final int numElements) {
 
         // This operation is composed of three kernels
         LevelZeroKernel kernel1 = computeBundle.createKernel("softMaxReduction");
         LevelZeroKernel kernel2 = computeBundle.createKernel("softMaxExpAndSum");
         LevelZeroKernel kernel3 = computeBundle.createKernel("softMaxNormalization");
 
-        computeBundle.runSoftMax1(kernel1, numElements, GROUP_SIZE, dOutput.buffer, dX.buffer);
+        computeBundle.runSoftMax1(kernel1, numElements, GROUP_SIZE, dOutput.buffer(), dX.buffer());
 
         int numGroups = numElements / GROUP_SIZE;
-        var maxValue = dOutput.segment.getAtIndex(ValueLayout.JAVA_FLOAT, 0);
+        var maxValue = dOutput.segment().getAtIndex(ValueLayout.JAVA_FLOAT, 0);
         for (int i = 1; i < numGroups; i++) {
-            maxValue = Math.max(maxValue, dOutput.segment.getAtIndex(ValueLayout.JAVA_FLOAT, i));
+            maxValue = Math.max(maxValue, dOutput.segment().getAtIndex(ValueLayout.JAVA_FLOAT, i));
         }
         System.out.println("VALUE-Max: " + maxValue);
 
-        computeBundle.runSoftMax2(kernel2, numElements, GROUP_SIZE, dOutput.buffer, dX.buffer, maxValue);
+        computeBundle.runSoftMax2(kernel2, numElements, GROUP_SIZE, dOutput.buffer(), dX.buffer(), maxValue);
 
         // final reduction
-        var valSum = dOutput.segment.getAtIndex(ValueLayout.JAVA_FLOAT, 0);
+        var valSum = dOutput.segment().getAtIndex(ValueLayout.JAVA_FLOAT, 0);
         for (int i = 1; i < numGroups; i++) {
-            valSum += dOutput.segment.getAtIndex(ValueLayout.JAVA_FLOAT, i);
+            valSum += dOutput.segment().getAtIndex(ValueLayout.JAVA_FLOAT, i);
         }
         System.out.println("VALUE-Sum (2): " + valSum);
 
-        computeBundle.runSoftMax3(kernel3, numElements, dX.buffer, valSum);
+        computeBundle.runSoftMax3(kernel3, numElements, dX.buffer(), valSum);
     }
 
-    private void runMatMul(ComputeBundle computeBundle, MemBundle dXout, MemBundle dX, MemBundle dW, final int numElements) {
+    private void runMatMul(ComputeBundle computeBundle, MemObject dXout, MemObject dX, MemObject dW, final int numElements) {
         LevelZeroKernel kernel1 = computeBundle.createKernel("matMul");
-        computeBundle.runMatMul(kernel1, numElements, dXout.buffer, dX.buffer, dW.buffer, numElements);
+        computeBundle.runMatMul(kernel1, numElements, dXout.buffer(), dX.buffer(), dW.buffer(), numElements);
         System.out.println("Mat-mul finished");
     }
 
@@ -129,11 +129,11 @@ public class CoreLLama2LZ {
 
         // Data Initialization
         int numElements = ELEMENTS;
-        MemBundle dOutput = computeBundle.allocateSharedWithSegment(numElements);
-        MemBundle dX = computeBundle.allocateSharedWithSegment(numElements);
-        computeBundle.init1DRandom(dX.segment, numElements);
-        MemBundle dWeight = computeBundle.allocateSharedWithSegment(numElements);
-        computeBundle.init1DRandom(dWeight.segment, numElements);
+        MemObject dOutput = computeBundle.allocateSharedWithSegment(numElements);
+        MemObject dX = computeBundle.allocateSharedWithSegment(numElements);
+        computeBundle.init1DRandom(dX.segment(), numElements);
+        MemObject dWeight = computeBundle.allocateSharedWithSegment(numElements);
+        computeBundle.init1DRandom(dWeight.segment(), numElements);
 
         // rmsNorm
         coreLLama2LZ.runRMSNorm(computeBundle, dOutput, dX, dWeight, numElements);
@@ -142,11 +142,11 @@ public class CoreLLama2LZ {
         coreLLama2LZ.runSoftMax(computeBundle, dOutput, dX, numElements);
 
         // Matrix-Vector matMul
-        MemBundle dXout = computeBundle.allocateSharedWithSegment(numElements);
-        MemBundle dW = computeBundle.allocateSharedWithSegment(numElements * numElements);
-        computeBundle.init1DRandom(dXout.segment, numElements);
+        MemObject dXout = computeBundle.allocateSharedWithSegment(numElements);
+        MemObject dW = computeBundle.allocateSharedWithSegment(numElements * numElements);
+        computeBundle.init1DRandom(dXout.segment(), numElements);
 
-        computeBundle.init2DRandom(dW.segment, numElements);
+        computeBundle.init2DRandom(dW.segment(), numElements);
 
         coreLLama2LZ.runMatMul(computeBundle, dXout, dX, dW, numElements);
     }

@@ -27,11 +27,6 @@ import uk.ac.manchester.tornado.drivers.spirv.levelzero.LevelZeroBufferInteger;
 
 import java.lang.foreign.MemorySegment;
 
-public class MemBundle {
-    final MemorySegment segment;
-    final LevelZeroBufferInteger buffer;
-    public MemBundle(MemorySegment segment, LevelZeroBufferInteger buffer) {
-        this.segment = segment;
-        this.buffer = buffer;
-    }
+public record MemObject(MemorySegment segment, LevelZeroBufferInteger buffer) {
+
 }

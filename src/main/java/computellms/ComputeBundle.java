@@ -244,7 +244,7 @@ public class ComputeBundle {
         return levelZeroKernel;
     }
 
-    public MemBundle allocateSharedWithSegment(int numElements) {
+    public MemObject allocateSharedWithSegment(int numElements) {
         final long bufferSize = (long) numElements * Sizeof.FLOAT.getNumBytes();
         LevelZeroBufferInteger buffer = new LevelZeroBufferInteger();
         ZeDeviceMemAllocDescriptor deviceMemAllocDesc = new ZeDeviceMemAllocDescriptor();
@@ -257,7 +257,7 @@ public class ComputeBundle {
         // Allocate Panama Region using the Level Zero Buffer Pointer
         MemorySegment segment = MemorySegment.ofAddress(buffer.getPtrBuffer()).reinterpret(bufferSize);
 
-        return new MemBundle(segment, buffer);
+        return new MemObject(segment, buffer);
     }
 
     private void launchAndSync(LevelZeroKernel levelZeroKernel, ZeGroupDispatch dispatch) {
