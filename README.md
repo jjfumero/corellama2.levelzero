@@ -92,3 +92,6 @@ java -Djava.library.path=$LEVEL_ZERO_JNI/levelZeroLib/build/ \
   computellms.CoreLLama2LZ
 ``` 
 
+## License 
+
+[MIT](https://github.com/jjfumero/corellama2.levelzero)
