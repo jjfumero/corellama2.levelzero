@@ -26,7 +26,15 @@ package computellms;
 import uk.ac.manchester.tornado.drivers.spirv.levelzero.LevelZeroBufferInteger;
 
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 
 public record MemObject(MemorySegment segment, LevelZeroBufferInteger buffer) {
 
+    public float get(int index) {
+        return segment.getAtIndex(ValueLayout.JAVA_FLOAT, index);
+    }
+
+    public void set(int index, float value) {
+        segment.setAtIndex(ValueLayout.JAVA_FLOAT, index, value);
+    }
 }
