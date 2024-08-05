@@ -77,13 +77,21 @@ __kernel void softMaxNormalization(__global float *x, const float sum) {
 }
 
 // ===============================================================
-// Kernels: matMul
+// Kernel: matMul
 // ===============================================================
-__kernel void matMul(__global float *xout, __global float *x,  __global float *w, const long n) {
+__kernel void matMul(__global float *xout, __global float *x,  __global float *w, const int n) {
     uint idx = get_global_id(0);
     float val = 0.0;
     for (int j = 0; j < n; j++) {
         val += w[idx * n + j] * x[j];
     }
 	xout[idx] = val;
+}
+
+// ===============================================================
+// Kernel: init
+// ===============================================================
+__kernel void init(__global float *xout, const int n) {
+    uint idx = get_global_id(0);
+	xout[idx] = n;
 }

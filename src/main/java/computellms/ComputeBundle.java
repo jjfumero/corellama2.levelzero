@@ -257,7 +257,7 @@ public class ComputeBundle {
         // Allocate Panama Region using the Level Zero Buffer Pointer
         MemorySegment segment = MemorySegment.ofAddress(buffer.getPtrBuffer()).reinterpret(bufferSize);
 
-        return new MemObject(segment, buffer);
+        return new MemObject(segment, buffer, numElements);
     }
 
     private void launchAndSync(LevelZeroKernel levelZeroKernel, ZeGroupDispatch dispatch) {
@@ -274,6 +274,9 @@ public class ComputeBundle {
 
         result = commandQueue.zeCommandQueueSynchronize(commandQueue.getCommandQueueHandlerPtr(), Long.MAX_VALUE);
         LevelZeroUtils.errorLog("zeCommandQueueSynchronize", result);
+
+        result = commandList.zeCommandListReset(commandList.getCommandListHandlerPtr());
+        LevelZeroUtils.errorLog("zeCommandListReset", result);
     }
 
     public void runKernelTesting(LevelZeroKernel levelZeroKernel, int numElements, LevelZeroBufferInteger bufferA, LevelZeroBufferInteger bufferB) {
@@ -347,7 +350,7 @@ public class ComputeBundle {
         for (int i = 0; i < parameters.length; i++) {
             result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), i, Sizeof.POINTER.getNumBytes(), parameters[i]);
         }
-        result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), parameters.length, Sizeof.FLOAT.getNumBytes(), Pointer.to(ss));
+        result |= levelZeroKernel.zeKernelSetArgumentValuePrimitive(kernel.getPtrZeKernelHandle(), parameters.length, Sizeof.FLOAT.getNumBytes(), Pointer.to(ss));
         LevelZeroUtils.errorLog("zeKernelSetArgumentValue", result);
 
         ZeGroupDispatch dispatch = new ZeGroupDispatch();
@@ -405,7 +408,7 @@ public class ComputeBundle {
         final int sharedMemorySize = groupSize * Sizeof.INT.getNumBytes();
         result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 2, sharedMemorySize, null);
         LevelZeroUtils.errorLog("zeKernelSetArgumentValue 2", result);
-        result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 3, Sizeof.FLOAT.getNumBytes(), Pointer.to(maxValue));
+        result = levelZeroKernel.zeKernelSetArgumentValuePrimitive(kernel.getPtrZeKernelHandle(), 3, Sizeof.FLOAT.getNumBytes(), Pointer.to(maxValue));
         LevelZeroUtils.errorLog("zeKernelSetArgumentValue 3", result);
 
         ZeGroupDispatch dispatch = new ZeGroupDispatch();
@@ -432,7 +435,7 @@ public class ComputeBundle {
         // Set Parameters
         result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 0, Sizeof.POINTER.getNumBytes(), dX);
         LevelZeroUtils.errorLog("zeKernelSetArgumentValue 0", result);
-        result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 1, Sizeof.FLOAT.getNumBytes(), Pointer.to(valSum));
+        result = levelZeroKernel.zeKernelSetArgumentValuePrimitive(kernel.getPtrZeKernelHandle(), 1, Sizeof.FLOAT.getNumBytes(), Pointer.to(valSum));
         LevelZeroUtils.errorLog("zeKernelSetArgumentValue 1", result);
 
         // Dispatch
@@ -444,15 +447,15 @@ public class ComputeBundle {
         launchAndSync(levelZeroKernel, dispatch);
     }
 
-    public void runMatMul(LevelZeroKernel levelZeroKernel, int numElements, LevelZeroBufferInteger dXout, LevelZeroBufferInteger dX, LevelZeroBufferInteger dW, int numElements1) {
-        int[] groupSizeX = new int[] { numElements };
+    public void runMatMul(LevelZeroKernel levelZeroKernel, LevelZeroBufferInteger dXout, LevelZeroBufferInteger dX, LevelZeroBufferInteger dW, int configSize, int numThreads) {
+        int[] groupSizeX = new int[] { numThreads };
         int[] groupSizeY = new int[] { 1 };
         int[] groupSizeZ = new int[] { 1 };
 
         ZeKernelHandle kernel = levelZeroKernel.getKernelHandle();
 
         // Compute block of threads
-        int result = levelZeroKernel.zeKernelSuggestGroupSize(kernel.getPtrZeKernelHandle(), numElements, 1, 1, groupSizeX, groupSizeY, groupSizeZ);
+        int result = levelZeroKernel.zeKernelSuggestGroupSize(kernel.getPtrZeKernelHandle(), numThreads, 1, 1, groupSizeX, groupSizeY, groupSizeZ);
         LevelZeroUtils.errorLog("zeKernelSuggestGroupSize", result);
         result = levelZeroKernel.zeKernelSetGroupSize(kernel.getPtrZeKernelHandle(), groupSizeX, groupSizeY, groupSizeZ);
         LevelZeroUtils.errorLog("zeKernelSetGroupSize", result);
@@ -461,12 +464,39 @@ public class ComputeBundle {
         result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 0, Sizeof.POINTER.getNumBytes(), dXout);
         result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 1, Sizeof.POINTER.getNumBytes(), dX);
         result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 2, Sizeof.POINTER.getNumBytes(), dW);
-        result |= levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 2, Sizeof.FLOAT.getNumBytes(), Pointer.to(numElements1));
+        result |= levelZeroKernel.zeKernelSetArgumentValuePrimitive(kernel.getPtrZeKernelHandle(), 3, Sizeof.INT.getNumBytes(), Pointer.to(configSize));
         LevelZeroUtils.errorLog("zeKernelSetArgumentValue: ", result);
 
         // Dispatch
         ZeGroupDispatch dispatch = new ZeGroupDispatch();
-        dispatch.setGroupCountX(numElements / groupSizeX[0]);
+        dispatch.setGroupCountX(numThreads / groupSizeX[0]);
+        dispatch.setGroupCountY(1);
+        dispatch.setGroupCountZ(1);
+
+        launchAndSync(levelZeroKernel, dispatch);
+    }
+
+    public void runInitKernel(LevelZeroKernel levelZeroKernel, LevelZeroBufferInteger dXout, int value, int numThreads) {
+        int[] groupSizeX = new int[] { numThreads };
+        int[] groupSizeY = new int[] { 1 };
+        int[] groupSizeZ = new int[] { 1 };
+
+        ZeKernelHandle kernel = levelZeroKernel.getKernelHandle();
+
+        // Compute block of threads
+        int result = levelZeroKernel.zeKernelSuggestGroupSize(kernel.getPtrZeKernelHandle(), numThreads, 1, 1, groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSuggestGroupSize", result);
+        result = levelZeroKernel.zeKernelSetGroupSize(kernel.getPtrZeKernelHandle(), groupSizeX, groupSizeY, groupSizeZ);
+        LevelZeroUtils.errorLog("zeKernelSetGroupSize", result);
+
+        // Set Parameters
+        result = levelZeroKernel.zeKernelSetArgumentValue(kernel.getPtrZeKernelHandle(), 0, Sizeof.POINTER.getNumBytes(), dXout);
+        result |= levelZeroKernel.zeKernelSetArgumentValuePrimitive(kernel.getPtrZeKernelHandle(), 1, Sizeof.INT.getNumBytes(), Pointer.to(value));
+        LevelZeroUtils.errorLog("zeKernelSetArgumentValue: ", result);
+
+        // Dispatch
+        ZeGroupDispatch dispatch = new ZeGroupDispatch();
+        dispatch.setGroupCountX(numThreads / groupSizeX[0]);
         dispatch.setGroupCountY(1);
         dispatch.setGroupCountZ(1);
 

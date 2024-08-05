@@ -26,6 +26,8 @@ package computellms;
 import uk.ac.manchester.tornado.drivers.spirv.levelzero.LevelZeroKernel;
 
 import java.lang.foreign.ValueLayout;
+import java.util.Random;
+import java.util.stream.IntStream;
 
 /**
  * Level Zero Implementation of the Compute Llama2.c kernels using the Level Zero JNI library.
@@ -115,12 +117,17 @@ public class CoreLLama2LZ {
         computeBundle.runSoftMax3(kernel3, numElements, dX.buffer(), valSum);
     }
 
-    private void runMatMul(ComputeBundle computeBundle, MemObject dXout, MemObject dX, MemObject dW, final int numElements) {
-        LevelZeroKernel kernel1 = computeBundle.createKernel("matMul");
-        computeBundle.runMatMul(kernel1, numElements, dXout.buffer(), dX.buffer(), dW.buffer(), numElements);
+    private void runMatMul(ComputeBundle computeBundle, MemObject dXout, MemObject dX, MemObject dW, int configSize, int vocabSize) {
+        LevelZeroKernel kernel = computeBundle.createKernel("matMul");
+        computeBundle.runMatMul(kernel, dXout.buffer(), dX.buffer(), dW.buffer(), configSize,  vocabSize);
         System.out.println("Mat-mul finished");
     }
 
+    private void runCheckInit(ComputeBundle computeBundle, MemObject dXout, int value) {
+        LevelZeroKernel kernel = computeBundle.createKernel("init");
+        computeBundle.runInitKernel(kernel, dXout.buffer(), value, dXout.size());
+        System.out.println("Init Kernel finished");
+    }
 
     private static void computeLlama2CoreMethods() {
         CoreLLama2LZ coreLLama2LZ = new CoreLLama2LZ();
@@ -148,7 +155,57 @@ public class CoreLLama2LZ {
 
         computeBundle.init2DRandom(dW.segment(), numElements);
 
-        coreLLama2LZ.runMatMul(computeBundle, dXout, dX, dW, numElements);
+        coreLLama2LZ.runMatMul(computeBundle, dXout, dX, dW, numElements, numElements);
+    }
+
+    private static void initData(MemObject data) {
+        Random r = new Random();
+        IntStream.range(0, data.size()).forEach(i -> data.set(i, r.nextFloat()));
+    }
+
+    private static void runSequentialMatMul(MemObject dXout, MemObject dX, MemObject dW, int configSize, int vocabSize) {
+        for (int i = 0; i < vocabSize; i++) {
+            float sum = 0.0f;
+            for (int j = 0; j < configSize; j++)
+                sum += dW.get(i * configSize + j) * dX.get(j);
+            dXout.set(i, sum);
+        }
+    }
+
+    private static void runCheckMatMul() {
+        CoreLLama2LZ coreLLama2LZ = new CoreLLama2LZ();
+        ComputeBundle computeBundle = new ComputeBundle();
+        computeBundle.initializeLevelZeroPlatform("kernels.spv");
+
+        final int config = 288;
+        final int vocabSize = 32000;
+        MemObject dXout = computeBundle.allocateSharedWithSegment(vocabSize);
+        MemObject dXoutSeq = computeBundle.allocateSharedWithSegment(vocabSize);
+        MemObject dX = computeBundle.allocateSharedWithSegment(config);
+        MemObject dW = computeBundle.allocateSharedWithSegment(config * vocabSize);
+
+        initData(dX);
+        initData(dW);
+
+        // Run Level Zero program on the iGPU
+        coreLLama2LZ.runMatMul(computeBundle, dXout, dX, dW, config, vocabSize);
+
+        // run sequential
+        runSequentialMatMul(dXoutSeq, dX, dW, config, vocabSize);
+
+        // Check Result
+        boolean isResultCorrect = true;
+        for (int i = 0; i < vocabSize; i++) {
+            if (Math.abs(dXout.get(i) - dXoutSeq.get(i)) > 0.01f) {
+                isResultCorrect = false;
+                break;
+            }
+        }
+        if (isResultCorrect) {
+            System.out.println("Result is correct");
+        } else {
+            System.out.println("Result is wrong");
+        }
     }
 
     public static void main(String[] args) {
@@ -157,7 +214,8 @@ public class CoreLLama2LZ {
             CoreLLama2LZ coreLLama2LZ = new CoreLLama2LZ();
             coreLLama2LZ.testingKernel();
         } else {
-            computeLlama2CoreMethods();
+            //computeLlama2CoreMethods();
+            runCheckMatMul();
         }
     }
 }
